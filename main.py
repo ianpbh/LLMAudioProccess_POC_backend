@@ -1,31 +1,24 @@
-from fastapi import FastAPI, File, UploadFile
-import whisper
-import shutil
-import os
-import audio2numpy as a2n
-import numpy as np
-import ast
+from fastapi import FastAPI, UploadFile, File
+from pydub import AudioSegment
+import speech_recognition as sr
+import tempfile
 
 app = FastAPI()
-model = whisper.load_model("base")
 
 @app.post("/process/")
 async def process_audio(file: UploadFile = File(...)):
-    temp_file_path = f"temp_{file.filename}"
+    audio_bytes = await file.read()
 
-    print(file)
-    import tempfile
-    byteszao = await file.read()
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-        tmp.write(byteszao)
-        tmp_path = tmp.name
-    
-    
-    result = model.transcribe(tmp_path, language="pt", fp16=False, task="transcribe")
-    # os.remove(temp_file_path)
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_mp3:
+        tmp_mp3.write(audio_bytes)
+        mp3_path = tmp_mp3.name
 
-    return {"text": result["text"]}
+    wav_path = mp3_path.replace(".mp3", ".wav")
+    AudioSegment.from_file(mp3_path).export(wav_path, format="wav")
 
-@app.get("/teste/")
-async def process_text():
-    return {"text": "relou"}
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(wav_path) as source:
+        audio_data = recognizer.record(source)
+        text = recognizer.recognize_google(audio_data, language="pt-BR")
+
+    return {"transcription": text}
